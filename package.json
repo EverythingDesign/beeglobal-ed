@@ -1,0 +1,20 @@
+{
+  "name": "beeglobal-webflow-code",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local development and production builds for Webflow custom JavaScript",
+  "scripts": {
+    "predev": "node scripts/prepare-dev.js",
+    "dev": "concurrently --kill-others \"npm run serve\" \"npm run proxy\"",
+    "serve": "serve -l tcp://127.0.0.1:3000 --cors --no-port-switching codes",
+    "proxy": "local-ssl-proxy --source 3001 --target 3000 --cert localhost.pem --key localhost-key.pem",
+    "build": "node build.js",
+    "watch": "node build.js --watch"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "esbuild": "^0.28.2",
+    "local-ssl-proxy": "^2.0.5",
+    "serve": "^14.2.3"
+  }
+}
