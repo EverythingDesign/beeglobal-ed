@@ -9,6 +9,10 @@
   const PARA_SELECTOR = '.home-hero-para';
   // The trigger counts as "in view" once its top rises above this fraction of the viewport height.
   const TRIGGER_LINE = .8;
+  // Scroll swaps replay the heading intro this many times faster than on page load.
+  const SWAP_SPEED = 2.5;
+  // Paragraph fade in/out, in seconds.
+  const PARA_DURATION = .4;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
   // The split runs after document.fonts.ready, which can land after DOMContentLoaded.
@@ -38,8 +42,9 @@
     gsap.set(paras, { opacity: 0 });
 
     // Reduced motion jumps straight to each end state instead of animating.
-    function playHeading() {
+    function playHeading(speed = 1) {
       if (!intro) return;
+      intro.timeScale(speed);
       if (reducedMotion.matches) intro.progress(swapped ? 0 : 1).pause();
       else if (swapped) intro.reverse();
       else intro.play();
@@ -48,7 +53,7 @@
     function showPara(visible) {
       gsap.to(paras, {
         opacity: visible ? 1 : 0,
-        duration: reducedMotion.matches ? 0 : .6,
+        duration: reducedMotion.matches ? 0 : PARA_DURATION,
         ease: 'power2.out',
         overwrite: true,
       });
@@ -59,7 +64,7 @@
     function setSwapped(next) {
       if (next === swapped) return;
       swapped = next;
-      playHeading();
+      playHeading(SWAP_SPEED);
       if (!swapped) showPara(false);
       else if (!intro || intro.progress() === 0) showPara(true);
     }
