@@ -125,14 +125,16 @@ document.addEventListener("DOMContentLoaded", () => {
        lets matchMedia revert it on desktop too.
     ----------------------------- */
 
-    const fadeBackdrop = context.add("fadeBackdrop", (show) => {
+    const fadeBackdrop = context.add("fadeBackdrop", (show, delay = 0) => {
       if (!backdrop) return;
       gsap.to(backdrop, {
         autoAlpha: show ? 1 : 0,
         // GSAP applies display: "block" at the start and display: "none" at the end.
         display: show ? "block" : "none",
         duration: BACKDROP_DURATION,
+        delay,
         ease: "power2.out",
+        // Also cancels a pending delayed fade-out if the menu reopens first.
         overwrite: true
       });
     });
@@ -157,7 +159,10 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
 
         openTL.timeScale(CLOSE_SPEED).reverse();
-        fadeBackdrop(false);
+        // Backdrop goes last: start its fade so it overlaps the end of the close and
+        // finishes half a fade after the menu has fully gone.
+        const closeLeft = openTL.time() / CLOSE_SPEED;
+        fadeBackdrop(false, Math.max(0, closeLeft - BACKDROP_DURATION / 2));
 
         // X → hamburger
         menuBtn.classList.remove("is-open");
