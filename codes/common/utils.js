@@ -273,10 +273,98 @@
     }
   }
 
+  /* Navbar (768px and up): the logo box and the links bar are drawn as one shape, pinched where
+     they meet. Below 768px the SVG is hidden and both boxes get their own backgrounds back. */
+
+  const navbarSelector = '.nav_desktop_layout';
+  const navbarStates = new WeakMap();
+  const navbarWide = window.matchMedia('(min-width: 768px)');
+  // Fillet where the logo meets the bar, as a fraction of its height. Smaller = deeper, sharper pinch.
+  const NAVBAR_BLEND = .13;
+
+  function roundedBox(x, y, left, right, height, radius) {
+    const qx = Math.abs(x - (left + right) / 2) - ((right - left) / 2 - radius);
+    const qy = Math.abs(y - height / 2) - (height / 2 - radius);
+    return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - radius;
+  }
+
+  function drawNavbar(state) {
+    const { layout, parts, svg, path } = state;
+    const box = layout.getBoundingClientRect();
+    const rects = parts.map(part => part.getBoundingClientRect());
+    const height = rects[0].height;
+    if (!navbarWide.matches || !height) {
+      svg.style.display = 'none';
+      parts.forEach(part => { part.style.backgroundColor = ''; });
+      return;
+    }
+    // Read the bar's colour while its own background is still showing.
+    state.fill ||= getComputedStyle(parts[parts.length - 1]).backgroundColor;
+    const boxes = parts.map((part, i) => ({
+      left: rects[i].left - box.left,
+      right: rects[i].right - box.left,
+      radius: parseFloat(getComputedStyle(part).borderTopLeftRadius) || 0,
+    }));
+    const blend = height * NAVBAR_BLEND;
+
+    function distance(x, y) {
+      return boxes.reduce((d, b) => smoothMin(d, roundedBox(x, y, b.left, b.right, height, b.radius), blend), Infinity);
+    }
+
+    const minX = boxes[0].left;
+    const maxX = boxes[boxes.length - 1].right;
+    svg.setAttribute('viewBox', `${minX} 0 ${maxX - minX} ${height}`);
+    Object.assign(svg.style, {
+      display: '',
+      left: `${minX}px`,
+      top: `${rects[0].top - box.top}px`,
+      width: `${maxX - minX}px`,
+      height: `${height}px`,
+      fill: state.fill,
+    });
+    path.setAttribute('d', outlinePaths(minX, maxX, height, distance, 0).join(''));
+    // The SVG now draws both boxes.
+    parts.forEach(part => { part.style.backgroundColor = 'transparent'; });
+  }
+
+  function setupNavbar(layout) {
+    if (navbarStates.has(layout)) return;
+    const logo = layout.querySelector('.nav_desktop_logo');
+    const links = layout.querySelector('.nav_links_component');
+    if (!logo || !links) return;
+
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    Object.assign(svg.style, { position: 'absolute', zIndex: '0', overflow: 'visible', pointerEvents: 'none', maxWidth: 'none' });
+    const path = document.createElementNS(svgNS, 'path');
+    svg.append(path);
+    if (getComputedStyle(layout).position === 'static') layout.style.position = 'relative';
+    layout.prepend(svg);
+
+    const state = { layout, parts: [logo, links], svg, path, fill: '' };
+    navbarStates.set(layout, state);
+    drawNavbar(state);
+    resizeObserver?.observe(layout);
+  }
+
+  navbarWide.addEventListener('change', () => {
+    document.querySelectorAll(navbarSelector).forEach(layout => {
+      const state = navbarStates.get(layout);
+      if (state) drawNavbar(state);
+    });
+  });
+
   /* Shared resize and hover/focus wiring. */
 
   const resizeObserver = 'ResizeObserver' in window ? new ResizeObserver(entries => {
     for (const entry of entries) {
+      const navbar = navbarStates.get(entry.target);
+      if (navbar) {
+        drawNavbar(navbar);
+        continue;
+      }
       const nav = navStates.get(entry.target);
       if (nav) {
         measureNav(nav);
@@ -306,6 +394,10 @@
         measureNav(nav);
         drawNav(nav);
       }
+    });
+    document.querySelectorAll(navbarSelector).forEach(layout => {
+      const state = navbarStates.get(layout);
+      if (state) drawNavbar(state);
     });
   });
 
@@ -339,6 +431,7 @@
   function start() {
     document.querySelectorAll(buttonSelector).forEach(setupButton);
     document.querySelectorAll(navSelector).forEach(setupNav);
+    document.querySelectorAll(navbarSelector).forEach(setupNavbar);
     document.addEventListener('pointerover', event => handlePointer(event, true));
     document.addEventListener('pointerout', event => handlePointer(event, false));
     document.addEventListener('focusin', event => handleFocus(event, true));

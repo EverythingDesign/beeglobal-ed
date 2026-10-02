@@ -444,3 +444,72 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
 })();
+
+// Fund cards: on screens 768px and up, the hovered card expands and stays expanded until the other
+// card is hovered. The expanded look itself lives in Webflow CSS (.fund-card.is-expanded).
+(function () {
+  const WRAP_SELECTOR = '.fund-cards_wrap';
+  const CARD_SELECTOR = '.fund-card';
+  const EXPANDED_CLASS = 'is-expanded';
+  const PARA_WRAP_SELECTOR = '.fund-card-para_wrap';
+  const wide = window.matchMedia('(min-width: 768px)');
+
+  function setupFundCards(wrap) {
+    const cards = [...wrap.querySelectorAll(CARD_SELECTOR)];
+    if (cards.length < 2) return;
+    // The first card starts expanded (Webflow ships it with the class; this is a fallback).
+    if (!cards.some((card) => card.classList.contains(EXPANDED_CLASS))) cards[0].classList.add(EXPANDED_CLASS);
+
+    function expand(card) {
+      if (!wide.matches) return;
+      cards.forEach((other) => other.classList.toggle(EXPANDED_CLASS, other === card));
+    }
+
+    // No leave handler: the last card hovered stays expanded. pointerenter also fires on a tap,
+    // so touch tablets at 768px+ expand on tap; focusin covers keyboard users.
+    cards.forEach((card) => {
+      card.addEventListener('pointerenter', () => expand(card));
+      card.addEventListener('focusin', () => expand(card));
+    });
+
+    // Lock the row to its tallest layout. Text rewraps as the cards change width, so each card
+    // expanded gives a different row height and the content below would shift on hover. Each
+    // layout is measured with transitions off and restored before the browser paints, so nothing flashes.
+    function lockHeight() {
+      wrap.style.minHeight = '';
+      if (!wide.matches) return;
+      const current = cards.find((card) => card.classList.contains(EXPANDED_CLASS));
+      const animated = [...cards, ...wrap.querySelectorAll(PARA_WRAP_SELECTOR)];
+      animated.forEach((el) => { el.style.transition = 'none'; });
+      let tallest = 0;
+      cards.forEach((card) => {
+        cards.forEach((other) => other.classList.toggle(EXPANDED_CLASS, other === card));
+        tallest = Math.max(tallest, wrap.getBoundingClientRect().height);
+      });
+      cards.forEach((other) => other.classList.toggle(EXPANDED_CLASS, other === current));
+      // Apply the restored layout before transitions come back, so it doesn't animate.
+      wrap.getBoundingClientRect();
+      animated.forEach((el) => { el.style.transition = ''; });
+      wrap.style.minHeight = `${Math.ceil(tallest)}px`;
+    }
+
+    let resizeFrame = 0;
+    window.addEventListener('resize', () => {
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(lockHeight);
+    });
+    lockHeight();
+    // Webfonts change how the text wraps, so measure again once they've loaded.
+    document.fonts?.ready.then(lockHeight);
+  }
+
+  function start() {
+    document.querySelectorAll(WRAP_SELECTOR).forEach(setupFundCards);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else {
+    start();
+  }
+})();
