@@ -1,9 +1,10 @@
 
 // Hero heading: reveal the words word by word. Webflow splits the heading with SplitText and
 // gsap.sets each .word to { opacity: 0, yPercent: 100 } once fonts load, so wait for those words first.
-// Once .home-hero_anim_trigger scrolls into view the hero paragraph fades in. Below desktop the
-// heading first plays its reveal in reverse and the paragraph waits for it to go; on desktop the
-// heading stays. Scrolling back above the trigger swaps them back.
+// The hero paragraph fades in scrubbed to scroll as .home-hero_anim_trigger rises from 70% of the
+// viewport to its centre (needs GSAP's ScrollTrigger plugin). Below desktop the heading also plays its
+// reveal in reverse once the trigger is in view, and the paragraph is held back until the heading has
+// gone; on desktop the heading stays and the paragraph simply follows scroll.
 (function () {
   const HEADING_SELECTOR = '.home-hero-heading';
   const TRIGGER_SELECTOR = '.home-hero_anim_trigger';
@@ -14,8 +15,8 @@
   const TRIGGER_LINE = .8;
   // Scroll swaps replay the heading intro this many times faster than on page load.
   const SWAP_SPEED = 2.5;
-  // Paragraph fade in/out, in seconds.
-  const PARA_DURATION = .4;
+  // How long the paragraph takes to catch up with scroll once the heading has gone, in seconds.
+  const PARA_CATCH_UP = .3;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
   // The split runs after document.fonts.ready, which can land after DOMContentLoaded.
@@ -39,12 +40,10 @@
     const paras = document.querySelectorAll(PARA_SELECTOR);
     const trigger = document.querySelector(TRIGGER_SELECTOR);
     let intro = null;
-    // true once the trigger is in view (or scrolled past): paragraph in.
+    // true once the trigger is in view (or scrolled past).
     let swapped = false;
     // true while the heading should be hidden: past the trigger, below desktop.
     let headingHidden = false;
-
-    gsap.set(paras, { opacity: 0 });
 
     // Reduced motion jumps straight to each end state instead of animating.
     function playHeading(speed = 1) {
@@ -62,35 +61,67 @@
       if (hide === headingHidden) return;
       headingHidden = hide;
       playHeading(SWAP_SPEED);
-    }
-
-    function showPara(visible) {
-      gsap.to(paras, {
-        opacity: visible ? 1 : 0,
-        duration: reducedMotion.matches ? 0 : PARA_DURATION,
-        ease: 'power2.out',
-        overwrite: true,
-      });
-    }
-
-    // Past the trigger the paragraph comes in, but while the heading is hiding it waits for the
-    // heading to fully go (see onReverseComplete below). Above the trigger it leaves straight away.
-    function updatePara() {
-      showPara(swapped && (!headingHidden || !intro || intro.progress() === 0));
+      renderPara(true);
     }
 
     function setSwapped(next) {
       if (next === swapped) return;
       swapped = next;
       updateHeading();
-      updatePara();
+    }
+
+    // Compare positions rather than using IntersectionObserver: a fast jump from below the trigger
+    // to above it (or back) never "intersects", so an observer would miss the swap.
+    function syncSwapped() {
+      if (trigger) setSwapped(trigger.getBoundingClientRect().top < window.innerHeight * TRIGGER_LINE);
     }
 
     // Crossing the desktop breakpoint while past the trigger hides or restores the heading to match.
-    desktop.addEventListener('change', () => {
-      updateHeading();
-      updatePara();
-    });
+    desktop.addEventListener('change', updateHeading);
+
+    // Paragraph: opacity follows scroll progress between the two trigger points, but stays at 0
+    // while the heading is still on its way out. When the heading finishes leaving, the paragraph
+    // eases up to wherever scroll says it should be (renderPara(true) from onReverseComplete).
+    let paraProgress = 0;
+    let catchUpUntil = 0;
+    const scrubbed = Boolean(trigger && window.ScrollTrigger);
+
+    function renderPara(catchUp = false) {
+      if (!scrubbed) return;
+      const headingLeaving = headingHidden && intro && intro.progress() > 0;
+      const opacity = headingLeaving ? 0 : paraProgress;
+      const now = performance.now();
+      if (catchUp && !reducedMotion.matches) catchUpUntil = now + PARA_CATCH_UP * 1000;
+      if (now < catchUpUntil) {
+        // Mid catch-up: retarget it rather than snapping, so scrolling during it stays smooth.
+        gsap.to(paras, { opacity, duration: (catchUpUntil - now) / 1000, ease: 'power2.out', overwrite: true });
+      } else {
+        gsap.killTweensOf(paras);
+        gsap.set(paras, { opacity });
+      }
+    }
+
+    if (scrubbed) {
+      gsap.registerPlugin(ScrollTrigger);
+      const paraTrigger = ScrollTrigger.create({
+        trigger,
+        start: 'top 70%',
+        end: 'top center',
+        onUpdate: (self) => {
+          paraProgress = self.progress;
+          // Settle the heading first, so a fast scroll can't show the paragraph for a frame
+          // before the heading has been told to leave.
+          syncSwapped();
+          renderPara();
+        },
+      });
+      paraProgress = paraTrigger.progress;
+      renderPara();
+    } else {
+      // Without ScrollTrigger (or the trigger), keep the paragraph visible rather than stuck hidden.
+      if (trigger) console.warn('home-animations: ScrollTrigger is not loaded, so the hero paragraph is shown without its scroll fade. Load gsap/dist/ScrollTrigger.min.js before this script.');
+      gsap.set(paras, { opacity: 1 });
+    }
 
     whenSplit(heading).then((words) => {
       intro = gsap.to(words, {
@@ -100,18 +131,16 @@
         ease: 'power3.out',
         stagger: .05,
         paused: true,
-        onReverseComplete: updatePara,
+        onReverseComplete: () => renderPara(true),
       });
       playHeading();
     });
 
     if (!trigger) return;
-    // Compare positions on scroll rather than using IntersectionObserver: a fast jump from below
-    // the trigger to above it (or back) never "intersects", so an observer would miss the swap.
     let frame = 0;
     function check() {
       frame = 0;
-      setSwapped(trigger.getBoundingClientRect().top < window.innerHeight * TRIGGER_LINE);
+      syncSwapped();
     }
     const queueCheck = () => { frame ||= requestAnimationFrame(check); };
     window.addEventListener('scroll', queueCheck, { passive: true });
