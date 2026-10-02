@@ -1,12 +1,15 @@
 
 // Hero heading: reveal the words word by word. Webflow splits the heading with SplitText and
 // gsap.sets each .word to { opacity: 0, yPercent: 100 } once fonts load, so wait for those words first.
-// Once .home-hero_anim_trigger scrolls into view, the heading plays its reveal in reverse and the
-// hero paragraph fades in; scrolling back above the trigger swaps them back.
+// Once .home-hero_anim_trigger scrolls into view the hero paragraph fades in. Below desktop the
+// heading first plays its reveal in reverse and the paragraph waits for it to go; on desktop the
+// heading stays. Scrolling back above the trigger swaps them back.
 (function () {
   const HEADING_SELECTOR = '.home-hero-heading';
   const TRIGGER_SELECTOR = '.home-hero_anim_trigger';
   const PARA_SELECTOR = '.home-hero-para';
+  // Webflow's desktop breakpoint; at this width and up the heading never hides.
+  const desktop = window.matchMedia('(min-width: 992px)');
   // The trigger counts as "in view" once its top rises above this fraction of the viewport height.
   const TRIGGER_LINE = .8;
   // Scroll swaps replay the heading intro this many times faster than on page load.
@@ -36,8 +39,10 @@
     const paras = document.querySelectorAll(PARA_SELECTOR);
     const trigger = document.querySelector(TRIGGER_SELECTOR);
     let intro = null;
-    // true once the trigger is in view (or scrolled past): heading out, paragraph in.
+    // true once the trigger is in view (or scrolled past): paragraph in.
     let swapped = false;
+    // true while the heading should be hidden: past the trigger, below desktop.
+    let headingHidden = false;
 
     gsap.set(paras, { opacity: 0 });
 
@@ -45,9 +50,18 @@
     function playHeading(speed = 1) {
       if (!intro) return;
       intro.timeScale(speed);
-      if (reducedMotion.matches) intro.progress(swapped ? 0 : 1).pause();
-      else if (swapped) intro.reverse();
+      if (reducedMotion.matches) intro.progress(headingHidden ? 0 : 1).pause();
+      else if (headingHidden) intro.reverse();
       else intro.play();
+    }
+
+    // Only touch the heading when its hidden state changes, so desktop scrolling never
+    // interferes with the page-load intro.
+    function updateHeading() {
+      const hide = swapped && !desktop.matches;
+      if (hide === headingHidden) return;
+      headingHidden = hide;
+      playHeading(SWAP_SPEED);
     }
 
     function showPara(visible) {
@@ -59,15 +73,24 @@
       });
     }
 
-    // The paragraph only comes in once the heading has fully gone (see onReverseComplete below);
-    // it leaves straight away when the heading comes back.
+    // Past the trigger the paragraph comes in, but while the heading is hiding it waits for the
+    // heading to fully go (see onReverseComplete below). Above the trigger it leaves straight away.
+    function updatePara() {
+      showPara(swapped && (!headingHidden || !intro || intro.progress() === 0));
+    }
+
     function setSwapped(next) {
       if (next === swapped) return;
       swapped = next;
-      playHeading(SWAP_SPEED);
-      if (!swapped) showPara(false);
-      else if (!intro || intro.progress() === 0) showPara(true);
+      updateHeading();
+      updatePara();
     }
+
+    // Crossing the desktop breakpoint while past the trigger hides or restores the heading to match.
+    desktop.addEventListener('change', () => {
+      updateHeading();
+      updatePara();
+    });
 
     whenSplit(heading).then((words) => {
       intro = gsap.to(words, {
@@ -77,9 +100,7 @@
         ease: 'power3.out',
         stagger: .05,
         paused: true,
-        onReverseComplete: () => {
-          if (swapped) showPara(true);
-        },
+        onReverseComplete: updatePara,
       });
       playHeading();
     });
