@@ -2,9 +2,10 @@
 // Hero heading: reveal the words word by word. Webflow splits the heading with SplitText and
 // gsap.sets each .word to { opacity: 0, yPercent: 100 } once fonts load, so wait for those words first.
 // The hero paragraph fades in scrubbed to scroll as .home-hero_anim_trigger rises from 70% of the
-// viewport to its centre (needs GSAP's ScrollTrigger plugin). Below desktop the heading also plays its
-// reveal in reverse once the trigger is in view, and the paragraph is held back until the heading has
-// gone; on desktop the heading stays and the paragraph simply follows scroll.
+// viewport to its centre (needs GSAP's ScrollTrigger plugin). Below desktop the heading also plays
+// its reveal in reverse once the trigger is in view, and the paragraph fades in fully once the heading
+// has gone (no scrub, so there's never a point where neither is showing); on desktop the heading stays
+// and the paragraph simply follows scroll.
 (function () {
   const HEADING_SELECTOR = '.home-hero-heading';
   const TRIGGER_SELECTOR = '.home-hero_anim_trigger';
@@ -79,17 +80,23 @@
     // Crossing the desktop breakpoint while past the trigger hides or restores the heading to match.
     desktop.addEventListener('change', updateHeading);
 
-    // Paragraph: opacity follows scroll progress between the two trigger points, but stays at 0
-    // while the heading is still on its way out. When the heading finishes leaving, the paragraph
-    // eases up to wherever scroll says it should be (renderPara(true) from onReverseComplete).
+    // Paragraph: on desktop, opacity follows scroll progress between the two trigger points. Below
+    // desktop it swaps with the heading instead of scrubbing, so one of them is always visible: it
+    // stays at 0 while the heading is on its way out, eases fully in once the heading has gone
+    // (renderPara(true) from onReverseComplete), and eases out as the heading comes back.
     let paraProgress = 0;
     let catchUpUntil = 0;
     const scrubbed = Boolean(trigger && window.ScrollTrigger);
 
+    function paraOpacity() {
+      if (desktop.matches) return paraProgress;
+      const headingLeaving = intro && intro.progress() > 0;
+      return headingHidden && !headingLeaving ? 1 : 0;
+    }
+
     function renderPara(catchUp = false) {
       if (!scrubbed) return;
-      const headingLeaving = headingHidden && intro && intro.progress() > 0;
-      const opacity = headingLeaving ? 0 : paraProgress;
+      const opacity = paraOpacity();
       const now = performance.now();
       if (catchUp && !reducedMotion.matches) catchUpUntil = now + PARA_CATCH_UP * 1000;
       if (now < catchUpUntil) {
