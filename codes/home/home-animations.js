@@ -1,6 +1,6 @@
 
-// Hero heading: reveal the words word by word. Webflow splits the heading with SplitText and
-// gsap.sets each .word to { opacity: 0, yPercent: 100 } once fonts load, so wait for those words first.
+// Hero heading: fade in each word after Webflow's SplitText setup, near the end of the
+// preloader curtain lift. The Webflow embed still sets yPercent: 100, so clear it here.
 // The hero paragraph fades in scrubbed to scroll as .home-hero_anim_trigger rises from 70% of the
 // viewport to its centre (needs GSAP's ScrollTrigger plugin). Below desktop the heading also plays
 // its reveal in reverse once the trigger is in view, and the paragraph fades in fully once the heading
@@ -16,6 +16,9 @@
   const TRIGGER_LINE = .8;
   // Scroll swaps replay the heading intro this many times faster than on page load.
   const SWAP_SPEED = 2.5;
+  // Webflow resolves preloaderDone when the curtain begins its 0.2s delay + 1s lift.
+  // At 0.85s the curtain is almost off screen; start the words there.
+  const CURTAIN_NEAR_END_DELAY = .85;
   // How long the paragraph takes to catch up with scroll once the heading has gone, in seconds.
   const PARA_CATCH_UP = .3;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -41,6 +44,7 @@
     const paras = document.querySelectorAll(PARA_SELECTOR);
     const trigger = document.querySelector(TRIGGER_SELECTOR);
     let intro = null;
+    let introReady = false;
     // true once the trigger is in view (or scrolled past).
     let swapped = false;
     // true while the heading should be hidden: past the trigger, below desktop.
@@ -48,7 +52,7 @@
 
     // Reduced motion jumps straight to each end state instead of animating.
     function playHeading(speed = 1) {
-      if (!intro) return;
+      if (!intro || !introReady) return;
       intro.timeScale(speed);
       if (reducedMotion.matches) intro.progress(headingHidden ? 0 : 1).pause();
       else if (headingHidden) intro.reverse();
@@ -131,16 +135,24 @@
     }
 
     whenSplit(heading).then((words) => {
+      // The Webflow split embed initializes these at yPercent: 100. Remove that transform
+      // while they are transparent so the reveal has no vertical movement.
+      gsap.set(words, { opacity: 0, yPercent: 0 });
       intro = gsap.to(words, {
         opacity: 1,
-        yPercent: 0,
-        duration: 1.25,
-        ease: 'power3.out',
-        stagger: .05,
+        duration: .5,
+        ease: 'power1.out',
+        stagger: .12,
         paused: true,
         onReverseComplete: () => renderPara(true),
       });
-      playHeading();
+      const curtain = document.querySelector('.preloader_wrap');
+      const curtainVisible = curtain && getComputedStyle(curtain).display !== 'none';
+      const delay = curtainVisible ? (reducedMotion.matches ? .25 : CURTAIN_NEAR_END_DELAY) : 0;
+      gsap.delayedCall(delay, () => {
+        introReady = true;
+        playHeading();
+      });
     });
 
     if (!trigger) return;
