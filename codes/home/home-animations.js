@@ -520,14 +520,18 @@
       card.addEventListener('focusin', () => expand(card));
     });
 
-    // Lock the row to its tallest layout. Text rewraps as the cards change width, so each card
-    // expanded gives a different row height and the content below would shift on hover. Each
-    // layout is measured with transitions off and restored before the browser paints, so nothing flashes.
+    // Reserve one row height for both expanded states. A min-height is not enough here: while
+    // widths and the paragraph animate together, text can briefly wrap taller than either end
+    // state and push the following section down. Measure without transitions, then fix the row's
+    // height so hover only changes the cards' widths and contents.
     function lockHeight() {
-      wrap.style.minHeight = '';
+      wrap.style.height = '';
+      wrap.style.boxSizing = '';
+      wrap.style.alignItems = '';
       if (!wide.matches) return;
       const current = cards.find((card) => card.classList.contains(EXPANDED_CLASS));
       const animated = [...cards, ...wrap.querySelectorAll(PARA_WRAP_SELECTOR)];
+      const transitions = animated.map((el) => el.style.transition);
       animated.forEach((el) => { el.style.transition = 'none'; });
       let tallest = 0;
       cards.forEach((card) => {
@@ -537,8 +541,10 @@
       cards.forEach((other) => other.classList.toggle(EXPANDED_CLASS, other === current));
       // Apply the restored layout before transitions come back, so it doesn't animate.
       wrap.getBoundingClientRect();
-      animated.forEach((el) => { el.style.transition = ''; });
-      wrap.style.minHeight = `${Math.ceil(tallest)}px`;
+      animated.forEach((el, index) => { el.style.transition = transitions[index]; });
+      wrap.style.boxSizing = 'border-box';
+      wrap.style.alignItems = 'stretch';
+      wrap.style.height = `${Math.ceil(tallest)}px`;
     }
 
     let resizeFrame = 0;
