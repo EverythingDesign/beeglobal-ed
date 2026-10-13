@@ -3,15 +3,19 @@
 // page's splitText() call (SplitText, wordsClass 'word'); a heading that wasn't split
 // fades in as a whole instead.
 // [section-para]: the paragraph fades in. Opacity only, no movement.
+// [section-tag] and [section-block]: move up and fade in from fully transparent.
 // Needs GSAP and its ScrollTrigger plugin. Without them nothing is hidden.
 (function () {
   const HEADING_SELECTOR = '[section-heading]';
   const PARA_SELECTOR = '[section-para]';
+  const LIFT_SELECTOR = '[section-tag], [section-block]';
   // Plays when the element's top rises above this point of the viewport.
   const START = 'top 85%';
   const WORD_DURATION = .5;
   const WORD_STAGGER = .08;
   const PARA_DURATION = .8;
+  const LIFT_DURATION = .7;
+  const LIFT_OFFSET = 24;
   const START_OPACITY = .1;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -37,9 +41,15 @@
     const headings = [...document.querySelectorAll(HEADING_SELECTOR)]
       .filter((heading) => !heading.closest('.transpacific-heading'));
     const paras = document.querySelectorAll(PARA_SELECTOR);
-    if ((!headings.length && !paras.length) || !window.gsap || !window.ScrollTrigger) return;
+    const liftElements = document.querySelectorAll(LIFT_SELECTOR);
+    if ((!headings.length && !paras.length && !liftElements.length) || !window.gsap || !window.ScrollTrigger) return;
     if (reducedMotion.matches) return;
     gsap.registerPlugin(ScrollTrigger);
+
+    liftElements.forEach((element) => {
+      gsap.set(element, { opacity: 0, y: LIFT_OFFSET });
+      reveal(element, element, { y: 0, duration: LIFT_DURATION });
+    });
 
     paras.forEach((para) => {
       gsap.set(para, { opacity: START_OPACITY });

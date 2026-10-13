@@ -90,7 +90,7 @@
     // (renderPara(true) from onReverseComplete), and eases out as the heading comes back.
     let paraProgress = 0;
     let catchUpUntil = 0;
-    const scrubbed = Boolean(trigger && window.ScrollTrigger);
+    const scrubbed = Boolean(paras.length && trigger && window.ScrollTrigger);
 
     function paraOpacity() {
       if (desktop.matches) return paraProgress;
@@ -130,8 +130,10 @@
       renderPara();
     } else {
       // Without ScrollTrigger (or the trigger), keep the paragraph visible rather than stuck hidden.
-      if (trigger) console.warn('home-animations: ScrollTrigger is not loaded, so the hero paragraph is shown without its scroll fade. Load gsap/dist/ScrollTrigger.min.js before this script.');
-      gsap.set(paras, { opacity: 1 });
+      if (paras.length) {
+        if (trigger && !window.ScrollTrigger) console.warn('home-animations: ScrollTrigger is not loaded, so the hero paragraph is shown without its scroll fade. Load gsap/dist/ScrollTrigger.min.js before this script.');
+        gsap.set(paras, { opacity: 1 });
+      }
     }
 
     whenSplit(heading).then((words) => {
@@ -195,7 +197,8 @@
 
       gsap.registerPlugin(ScrollTrigger);
       gsap.set(text, { opacity: 1 });
-      gsap.set(text.querySelectorAll('.word'), { opacity: 1 });
+      const existingWords = text.querySelectorAll('.word');
+      if (existingWords.length) gsap.set(existingWords, { opacity: 1 });
       gsap.set([...split.words, capital], { opacity: 0, yPercent: 0 });
       const reveal = gsap.timeline({ paused: true })
         .to(split.words, { opacity: 1, duration: .5, ease: 'power1.out', stagger: .1 }, 0)
