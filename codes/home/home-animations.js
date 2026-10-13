@@ -1,6 +1,6 @@
 
-// Hero heading: fade in each word after Webflow's SplitText setup, near the end of the
-// preloader curtain lift. The Webflow embed still sets yPercent: 100, so clear it here.
+// Hero heading: fade in each word after Webflow's word split, near the end of the
+// preloader curtain lift. Keep the existing mobile heading/paragraph swap reversible.
 // The hero paragraph fades in scrubbed to scroll as .home-hero_anim_trigger rises from 70% of the
 // viewport to its centre (needs GSAP's ScrollTrigger plugin). Below desktop the heading also plays
 // its reveal in reverse once the trigger is in view, and the paragraph fades in fully once the heading
@@ -135,8 +135,6 @@
     }
 
     whenSplit(heading).then((words) => {
-      // The Webflow split embed initializes these at yPercent: 100. Remove that transform
-      // while they are transparent so the reveal has no vertical movement.
       gsap.set(words, { opacity: 0, yPercent: 0 });
       intro = gsap.to(words, {
         opacity: 1,
@@ -171,6 +169,51 @@
     document.addEventListener('DOMContentLoaded', setupHero, { once: true });
   } else {
     setupHero();
+  }
+})();
+
+// The Trans-Pacific Advantage: fade in each word, then the Capital line.
+(function () {
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  function setupTranspacificHeading() {
+    const heading = document.querySelector('.transpacific-heading');
+    // Webflow strips the editor-only [section-heading] attribute in the published DOM.
+    const text = heading?.querySelector(':scope > p');
+    const capital = heading?.querySelector('.capital-ico_wrap');
+    if (!heading || !text || !capital || !window.gsap || !window.ScrollTrigger || !window.SplitText || reducedMotion.matches) return;
+
+    // Webflow's word split runs after these promises. One task gives it time to finish
+    // before SplitText prepares the visible words.
+    Promise.all([document.fonts.ready, window.preloaderDone]).then(() => new Promise((resolve) => setTimeout(resolve))).then(() => {
+      const split = SplitText.create(text, {
+        type: 'words',
+        wordsClass: 'transpacific-reveal-word',
+        aria: 'none',
+      });
+      if (!split.words.length) return;
+
+      gsap.registerPlugin(ScrollTrigger);
+      gsap.set(text, { opacity: 1 });
+      gsap.set(text.querySelectorAll('.word'), { opacity: 1 });
+      gsap.set([...split.words, capital], { opacity: 0, yPercent: 0 });
+      const reveal = gsap.timeline({ paused: true })
+        .to(split.words, { opacity: 1, duration: .5, ease: 'power1.out', stagger: .1 }, 0)
+        .to(capital, { opacity: 1, duration: .5, ease: 'power1.out' }, split.words.length * .1);
+      ScrollTrigger.create({
+        trigger: heading,
+        start: 'top 85%',
+        animation: reveal,
+        toggleActions: 'play none none reverse',
+      });
+      ScrollTrigger.refresh();
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', setupTranspacificHeading, { once: true });
+  } else {
+    setupTranspacificHeading();
   }
 })();
 

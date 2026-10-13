@@ -52,6 +52,9 @@
         .metrics-data .swiper-slide { position: relative; display: block; width: 100%; height: auto; flex-shrink: 0; transition-property: transform; }
         .metrics-data .swiper-slide [data-wf--typography-plain--variant="h2"] { visibility: hidden; }
         .metrics-data .metrics-number-display { position: absolute; top: 0; left: 0; z-index: 2; margin: 0; pointer-events: none; }
+        .metrics-swiper-navigator .is-next { position: relative; }
+        .metrics-swiper-navigator .metrics-progress-ring { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; transform: rotate(-90deg) scaleY(-1); }
+        .metrics-swiper-navigator .metrics-progress-ring circle { fill: none; stroke: var(--swatch--deep-blue, #153138); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 100; }
       `;
       document.head.appendChild(style);
     }
@@ -65,6 +68,13 @@
     if (total) total.textContent = format(slides.length);
 
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const progressRing = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    progressRing.setAttribute('class', 'metrics-progress-ring');
+    progressRing.setAttribute('viewBox', '0 0 100 100');
+    progressRing.setAttribute('aria-hidden', 'true');
+    progressRing.innerHTML = '<circle cx="50" cy="50" r="48" pathLength="100" />';
+    next.appendChild(progressRing);
+    const progressCircle = progressRing.querySelector('circle');
     let displayedValue = metrics[0].value;
     let numberTween = null;
 
@@ -108,6 +118,10 @@
       slidesPerView: 1,
       speed: 650,
       loop: true,
+      autoplay: reducedMotion.matches ? false : {
+        delay: 3000,
+        disableOnInteraction: false,
+      },
       on: {
         init(instance) {
           updateMetric(instance, false);
@@ -115,19 +129,30 @@
         realIndexChange(instance) {
           updateMetric(instance, true);
         },
+        autoplayTimeLeft(_instance, _timeLeft, percentage) {
+          progressCircle.style.strokeDashoffset = String(Math.max(0, Math.min(1, percentage)) * 100);
+        },
       },
     });
 
-    [[prev, 'Previous statistic', () => swiper.slidePrev()],
-      [next, 'Next statistic', () => swiper.slideNext()]].forEach(([arrow, label, move]) => {
+    // A manual step starts a fresh three-second countdown on the new metric.
+    const move = (direction) => {
+      swiper[direction]();
+      if (swiper.autoplay?.running) {
+        swiper.autoplay.stop();
+        swiper.autoplay.start();
+      }
+    };
+    [[prev, 'Previous statistic', () => move('slidePrev')],
+      [next, 'Next statistic', () => move('slideNext')]].forEach(([arrow, label, navigate]) => {
       arrow.setAttribute('role', 'button');
       arrow.setAttribute('tabindex', '0');
       arrow.setAttribute('aria-label', label);
-      arrow.addEventListener('click', move);
+      arrow.addEventListener('click', navigate);
       arrow.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
-        move();
+        navigate();
       });
     });
   }
