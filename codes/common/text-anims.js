@@ -19,7 +19,7 @@
   const PARA_DURATION = .8;
   const LIFT_DURATION = .7;
   const LIFT_OFFSET = 24;
-  const BLOCK_START = 'top 80%';
+  const BLOCK_START = 'top 90%';
   const BLOCK_DURATION = 1;
   const BLOCK_OFFSET = 96;
   const BLOCK_STAGGER = .15;
