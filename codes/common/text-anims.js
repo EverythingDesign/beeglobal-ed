@@ -3,7 +3,8 @@
 // page's splitText() call (SplitText, wordsClass 'word'); a heading that wasn't split
 // fades in as a whole instead.
 // [section-para]: the paragraph fades in. Opacity only, no movement.
-// [section-tag] and [section-block]: move up and fade in from fully transparent.
+// [section-tag]: moves up and fades in from fully transparent.
+// [section-block]: rises and fades in once it is clearly in view.
 // Consecutive sibling [section-block] elements reveal one after another.
 // Needs GSAP and its ScrollTrigger plugin. Without them nothing is hidden.
 (function () {
@@ -18,7 +19,10 @@
   const PARA_DURATION = .8;
   const LIFT_DURATION = .7;
   const LIFT_OFFSET = 24;
-  const BLOCK_STAGGER = .5;
+  const BLOCK_START = 'top 80%';
+  const BLOCK_DURATION = 1;
+  const BLOCK_OFFSET = 96;
+  const BLOCK_STAGGER = .15;
   const START_OPACITY = .1;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -29,11 +33,11 @@
       .then(() => new Promise((resolve) => setTimeout(resolve)));
   }
 
-  function reveal(element, targets, vars) {
+  function reveal(element, targets, vars, start = START) {
     const tween = gsap.to(targets, { opacity: 1, ease: 'power1.out', ...vars, paused: true });
     ScrollTrigger.create({
       trigger: element,
-      start: START,
+      start,
       animation: tween,
       toggleActions: 'play none none reverse',
     });
@@ -71,8 +75,8 @@
     });
 
     blockGroups(blocks).forEach((group) => {
-      gsap.set(group, { opacity: 0, y: LIFT_OFFSET });
-      reveal(group[0], group, { y: 0, duration: LIFT_DURATION, stagger: BLOCK_STAGGER });
+      gsap.set(group, { opacity: 0, y: BLOCK_OFFSET });
+      reveal(group[0], group, { y: 0, duration: BLOCK_DURATION, ease: 'power2.out', stagger: BLOCK_STAGGER }, BLOCK_START);
     });
 
     paras.forEach((para) => {
