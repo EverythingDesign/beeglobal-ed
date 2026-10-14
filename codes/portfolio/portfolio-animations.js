@@ -167,3 +167,183 @@
     start();
   }
 })();
+
+// Spotlight ticker, phones only (479px and below): the spotlight cards drift left in a seamless
+// loop like the Home portfolio marquee, and can be dragged or flicked. It eases to a stop while a
+// card's details are open and picks up again once they close.
+(function () {
+  const ROOT_SELECTOR = '.spotlight-card-wrap-outer';
+  const PHONE = '(max-width: 479px)';
+  // Cruising speed in px per second; the cards drift left.
+  const SPEED = 40;
+  // How quickly a flick, drag release or stop eases to the target speed (higher = sooner).
+  const SETTLE = 2.5;
+  // Pointer travel (px) after which a press counts as a drag rather than a tap.
+  const DRAG_THRESHOLD = 5;
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  // Copies of the cards get the same tap behaviour the card component's own script gives the
+  // originals: a tap opens the details, the close button shuts them, a tap elsewhere closes.
+  function wireCopy(card, signal) {
+    const toggle = card.querySelector('.spotlight_card_toggle');
+    const setOpen = (open) => {
+      card.classList.toggle('is-open', open);
+      toggle?.setAttribute('aria-expanded', String(open));
+    };
+    card.addEventListener('click', (event) => {
+      if (event.target.closest('a, .spotlight_card_close')) return;
+      setOpen(true);
+    }, { signal });
+    card.querySelector('.spotlight_card_close')?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      setOpen(false);
+    }, { signal });
+    document.addEventListener('click', (event) => {
+      if (!card.contains(event.target)) setOpen(false);
+    }, { signal });
+  }
+
+  function setupTicker(root) {
+    const track = root.querySelector('.spotlight-card-wrap');
+    const originals = track ? [...track.children] : [];
+    if (originals.length < 2) return null;
+
+    const listeners = new AbortController();
+    const { signal } = listeners;
+    const state = { offset: 0, velocity: 0, setWidth: 0, dragging: false };
+    const setX = gsap.quickSetter(track, 'x', 'px');
+    let wrap = gsap.utils.wrap(-1, 0);
+    const clones = [];
+
+    function appendCopy() {
+      originals.forEach((item) => {
+        const clone = item.cloneNode(true);
+        // Screen readers get the originals once; the copies are for looks and taps.
+        clone.setAttribute('aria-hidden', 'true');
+        clone.querySelectorAll('a, button').forEach((el) => el.setAttribute('tabindex', '-1'));
+        clone.querySelectorAll('.spotlight_card').forEach((card) => {
+          card.classList.remove('is-open', 'is-dismissed');
+          wireCopy(card, signal);
+        });
+        track.append(clone);
+        clones.push(clone);
+      });
+    }
+
+    function render() {
+      setX(wrap(state.offset));
+    }
+
+    // Clone the card set until one full set can scroll out of view with the track still reaching
+    // the right edge of the screen. Wrapping by exactly one measured set keeps the loop seamless.
+    function layout() {
+      if (!clones.length) appendCopy();
+      state.setWidth = track.children[originals.length].offsetLeft - originals[0].offsetLeft;
+      if (!state.setWidth) return;
+      const sets = Math.ceil((window.innerWidth - Math.max(root.getBoundingClientRect().left, 0)) / state.setWidth) + 1;
+      while (clones.length / originals.length + 1 < sets) appendCopy();
+      wrap = gsap.utils.wrap(-state.setWidth, 0);
+      render();
+    }
+
+    function tick(time, deltaTime) {
+      if (state.dragging) return;
+      const dt = Math.min(deltaTime, 64) / 1000;
+      const reading = track.querySelector('.spotlight_card.is-open');
+      const cruise = reducedMotion.matches || reading ? 0 : -SPEED;
+      state.velocity += (cruise - state.velocity) * (1 - Math.exp(-SETTLE * dt));
+      state.offset += state.velocity * dt;
+      render();
+    }
+
+    // Drag with touch or mouse. touch-action: pan-y keeps vertical page scrolling.
+    let startX = 0;
+    let lastX = 0;
+    let lastTime = 0;
+    let moved = 0;
+    root.style.touchAction = 'pan-y';
+
+    root.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      state.dragging = true;
+      state.velocity = 0;
+      moved = 0;
+      startX = lastX = event.clientX;
+      lastTime = event.timeStamp;
+      root.setPointerCapture(event.pointerId);
+    }, { signal });
+
+    root.addEventListener('pointermove', (event) => {
+      if (!state.dragging) return;
+      const dx = event.clientX - lastX;
+      const dt = Math.max(event.timeStamp - lastTime, 1) / 1000;
+      state.offset += dx;
+      // Smooth the release velocity over the last few moves.
+      state.velocity = state.velocity * 0.6 + (dx / dt) * 0.4;
+      moved = Math.max(moved, Math.abs(event.clientX - startX));
+      lastX = event.clientX;
+      lastTime = event.timeStamp;
+      render();
+    }, { signal });
+
+    function release(event) {
+      if (!state.dragging) return;
+      state.dragging = false;
+      // Held still before letting go: no flick.
+      if (event.timeStamp - lastTime > 100) state.velocity = 0;
+      state.velocity = gsap.utils.clamp(-3000, 3000, state.velocity);
+    }
+    root.addEventListener('pointerup', release, { signal });
+    root.addEventListener('pointercancel', release, { signal });
+    // A drag shouldn't also open the card it started on.
+    root.addEventListener('click', (event) => {
+      if (moved > DRAG_THRESHOLD) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }, { capture: true, signal });
+
+    // Pause while the cards are out of view.
+    let playing = false;
+    const play = () => { if (!playing) { playing = true; gsap.ticker.add(tick); } };
+    const pause = () => { if (playing) { playing = false; gsap.ticker.remove(tick); } };
+    let resizeFrame = 0;
+    window.addEventListener('resize', () => {
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = requestAnimationFrame(layout);
+    }, { signal });
+
+    track.style.willChange = 'transform';
+    layout();
+    const observer = 'IntersectionObserver' in window
+      ? new IntersectionObserver(([entry]) => (entry.isIntersecting ? play() : pause()), { rootMargin: '100px 0px' })
+      : null;
+    if (observer) observer.observe(root);
+    else play();
+
+    // Leaving phone width puts everything back as it was.
+    return () => {
+      pause();
+      observer?.disconnect();
+      listeners.abort();
+      cancelAnimationFrame(resizeFrame);
+      clones.forEach((clone) => clone.remove());
+      gsap.set(track, { clearProps: 'transform,willChange' });
+      root.style.touchAction = '';
+    };
+  }
+
+  function start() {
+    if (!window.gsap) return;
+    gsap.matchMedia().add(PHONE, () => {
+      const teardowns = [...document.querySelectorAll(ROOT_SELECTOR)].map(setupTicker).filter(Boolean);
+      return () => teardowns.forEach((teardown) => teardown());
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else {
+    start();
+  }
+})();
