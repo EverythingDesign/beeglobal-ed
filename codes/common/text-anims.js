@@ -4,11 +4,13 @@
 // fades in as a whole instead.
 // [section-para]: the paragraph fades in. Opacity only, no movement.
 // [section-tag] and [section-block]: move up and fade in from fully transparent.
+// Consecutive sibling [section-block] elements reveal one after another.
 // Needs GSAP and its ScrollTrigger plugin. Without them nothing is hidden.
 (function () {
   const HEADING_SELECTOR = '[section-heading]';
   const PARA_SELECTOR = '[section-para]';
-  const LIFT_SELECTOR = '[section-tag], [section-block]';
+  const TAG_SELECTOR = '[section-tag]';
+  const BLOCK_SELECTOR = '[section-block]';
   // Plays when the element's top rises above this point of the viewport.
   const START = 'top 85%';
   const WORD_DURATION = .5;
@@ -16,6 +18,7 @@
   const PARA_DURATION = .8;
   const LIFT_DURATION = .7;
   const LIFT_OFFSET = 24;
+  const BLOCK_STAGGER = .15;
   const START_OPACITY = .1;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -36,19 +39,40 @@
     });
   }
 
+  function blockGroups(blocks) {
+    const groups = [];
+    const groupByBlock = new WeakMap();
+    blocks.forEach((block) => {
+      const previous = block.previousElementSibling;
+      const group = previous && groupByBlock.get(previous);
+      if (group) group.push(block);
+      else groups.push([block]);
+      groupByBlock.set(block, group || groups[groups.length - 1]);
+    });
+    return groups;
+  }
+
   function setup() {
     // The home page's Trans-Pacific heading has its own word opacity reveal.
     const headings = [...document.querySelectorAll(HEADING_SELECTOR)]
       .filter((heading) => !heading.closest('.transpacific-heading'));
     const paras = document.querySelectorAll(PARA_SELECTOR);
-    const liftElements = document.querySelectorAll(LIFT_SELECTOR);
-    if ((!headings.length && !paras.length && !liftElements.length) || !window.gsap || !window.ScrollTrigger) return;
+    const tags = document.querySelectorAll(TAG_SELECTOR);
+    // If a wrapper and its children are both marked, animate the children only.
+    const blocks = [...document.querySelectorAll(BLOCK_SELECTOR)]
+      .filter((block) => !block.querySelector(BLOCK_SELECTOR));
+    if ((!headings.length && !paras.length && !tags.length && !blocks.length) || !window.gsap || !window.ScrollTrigger) return;
     if (reducedMotion.matches) return;
     gsap.registerPlugin(ScrollTrigger);
 
-    liftElements.forEach((element) => {
+    tags.forEach((element) => {
       gsap.set(element, { opacity: 0, y: LIFT_OFFSET });
       reveal(element, element, { y: 0, duration: LIFT_DURATION });
+    });
+
+    blockGroups(blocks).forEach((group) => {
+      gsap.set(group, { opacity: 0, y: LIFT_OFFSET });
+      reveal(group[0], group, { y: 0, duration: LIFT_DURATION, stagger: BLOCK_STAGGER });
     });
 
     paras.forEach((para) => {
