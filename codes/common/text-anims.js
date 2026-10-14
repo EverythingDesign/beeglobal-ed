@@ -18,7 +18,7 @@
   const PARA_DURATION = .8;
   const LIFT_DURATION = .7;
   const LIFT_OFFSET = 24;
-  const BLOCK_STAGGER = .15;
+  const BLOCK_STAGGER = .5;
   const START_OPACITY = .1;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
