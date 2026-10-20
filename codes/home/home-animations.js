@@ -358,6 +358,9 @@
     const track = root.querySelector('.swiper-wrapper') || root.firstElementChild;
     const originals = track ? [...track.children] : [];
     if (!window.gsap || originals.length < 2) return;
+    // Cards link to the company's site. The browser's own link dragging would take over a drag,
+    // so it's off (the copies inherit this).
+    track.querySelectorAll('a').forEach(link => { link.draggable = false; });
 
     const state = { offset: 0, velocity: 0, setWidth: 0, edges: [], dragging: false, tween: null, tweenTarget: 0 };
     const setX = gsap.quickSetter(track, 'x', 'px');
@@ -454,7 +457,6 @@
       moved = 0;
       startX = lastX = event.clientX;
       lastTime = event.timeStamp;
-      root.setPointerCapture(event.pointerId);
       root.style.cursor = 'grabbing';
       if (event.pointerType === 'mouse') event.preventDefault();
     });
@@ -467,6 +469,9 @@
       // Smooth the release velocity over the last few moves.
       state.velocity = state.velocity * .6 + dx / dt * .4;
       moved = Math.max(moved, Math.abs(event.clientX - startX));
+      // Hold on to the pointer only once this is clearly a drag: capturing it on press would send
+      // the click to the list instead of the card's link.
+      if (moved > DRAG_THRESHOLD && !root.hasPointerCapture(event.pointerId)) root.setPointerCapture(event.pointerId);
       lastX = event.clientX;
       lastTime = event.timeStamp;
       render();
@@ -481,7 +486,8 @@
       state.velocity = gsap.utils.clamp(-3000, 3000, state.velocity);
     }
 
-    root.addEventListener('pointerup', release);
+    // On the window too: before a drag is captured, the press can end outside the list.
+    window.addEventListener('pointerup', release);
     root.addEventListener('pointercancel', release);
     // A drag shouldn't also count as a click on whatever is under the pointer.
     root.addEventListener('click', event => {
