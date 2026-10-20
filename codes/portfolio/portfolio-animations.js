@@ -1,150 +1,176 @@
-// Portfolio hero: turn the four existing "At a glance" blocks into one Swiper.
-// Load swiper-bundle.min.js before this file in the Webflow page footer.
+// Portfolio and Team heroes: the "At a glance" statistics. One statistic shows at a time and
+// they cycle every four seconds. The line under the heading fills as the countdown; the number
+// rolls up out of view as the next one rolls in from below (down when stepping back), and the
+// caption only fades: out quickly, then the new one in. Needs GSAP, loaded before this file.
 (function () {
+  // Seconds each statistic stays up, and the length of the number roll.
+  const DELAY = 4;
+  const ROLL = 0.45;
+  const NUMBER = '[data-wf--typography-plain--variant="h2"]';
+
   function setupMetrics(root) {
+    const gsap = window.gsap;
     const viewport = root.querySelector('.metrics-data');
     const counter = root.querySelector('.swiper-pagination-number');
+    const divider = root.querySelector('.metric-heading-wrap .card-divider');
     const prev = root.querySelector('.metrics-swiper-navigator .is-prev');
     const next = root.querySelector('.metrics-swiper-navigator .is-next');
-    if (!viewport || viewport.swiper || !counter || !prev || !next) return;
+    if (!gsap || !viewport || viewport.dataset.metricsReady || !counter || !prev || !next) return;
 
-    const existingWrapper = viewport.querySelector(':scope > .swiper-wrapper');
-    const slides = [...(existingWrapper || viewport).children];
+    const wrapper = viewport.querySelector(':scope > .metrics-data-wrapper, :scope > .swiper-wrapper') || viewport;
+    const slides = [...wrapper.children].filter((slide) => slide.querySelector(NUMBER));
     if (slides.length < 2) return;
-    if (typeof window.Swiper !== 'function') {
-      console.warn('Portfolio metrics: load the Swiper bundle before portfolio-animations.js.');
-      return;
-    }
-
-    const numberSelector = '[data-wf--typography-plain--variant="h2"] span';
-    const metrics = slides.map((slide) => {
-      const label = slide.querySelector(numberSelector)?.textContent.trim() || '';
-      const match = label.match(/^([\d,]+)(.*)$/);
-      return { label, value: match ? Number(match[1].replaceAll(',', '')) : null, suffix: match?.[2] || '' };
-    });
-    const number = slides[0].querySelector('[data-wf--typography-plain--variant="h2"]')?.cloneNode(true);
-    if (!number) return;
-    number.classList.add('metrics-number-display');
-
-    // Use Webflow's Swiper wrapper when present; support the earlier flat markup too.
-    const wrapper = existingWrapper || document.createElement('div');
-    if (!existingWrapper) {
-      wrapper.className = 'swiper-wrapper';
-      viewport.appendChild(wrapper);
-    }
-    slides.forEach((slide) => {
-      slide.classList.add('swiper-slide');
-      if (!existingWrapper) wrapper.appendChild(slide);
-    });
-    viewport.appendChild(number);
-    viewport.classList.add('swiper');
+    viewport.dataset.metricsReady = 'true';
     viewport.setAttribute('aria-label', 'At a glance statistics');
+    const labels = slides.map((slide) => slide.querySelector(`${NUMBER} span`)?.textContent.trim() || '');
 
-    // Scope the essential Swiper layout here: the page currently loads the JS bundle without
-    // Swiper's stylesheet, and Webflow's general .swiper class allows overflow.
-    if (!document.getElementById('portfolio-metrics-swiper-style')) {
+    // The slides share one grid cell, so the block keeps the height of the tallest caption and
+    // nothing below it moves. Each slide's own number only holds its space: the visible number is
+    // a copy in a clipped window over that spot, where it rolls.
+    if (!document.getElementById('portfolio-metrics-style')) {
       const style = document.createElement('style');
-      style.id = 'portfolio-metrics-swiper-style';
+      style.id = 'portfolio-metrics-style';
       style.textContent = `
         .metrics_wrap_outer { min-width: 0; max-width: 100%; }
-        .metrics-data.swiper { position: relative; display: block; width: 100%; min-width: 0; max-width: 100%; overflow: hidden; }
-        .metrics-data .swiper-wrapper { position: relative; z-index: 1; display: flex; width: 100%; height: 100%; box-sizing: content-box; transition-property: transform; }
-        .metrics-data .swiper-slide { position: relative; display: block; width: 100%; height: auto; flex-shrink: 0; transition-property: transform; }
-        .metrics-data .swiper-slide [data-wf--typography-plain--variant="h2"] { visibility: hidden; }
-        .metrics-data .metrics-number-display { position: absolute; top: 0; left: 0; z-index: 2; margin: 0; pointer-events: none; }
-        .metrics-swiper-navigator .is-next { position: relative; }
-        .metrics-swiper-navigator .metrics-progress-ring { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; transform: rotate(-90deg) scaleY(-1); }
-        .metrics-swiper-navigator .metrics-progress-ring circle { fill: none; stroke: var(--swatch--deep-blue, #153138); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 100; }
+        .metrics-data[data-metrics-ready] { position: relative; }
+        .metrics-data[data-metrics-ready] > .metrics-data-wrapper,
+        .metrics-data[data-metrics-ready] > .swiper-wrapper { display: grid; }
+        .metrics-data[data-metrics-ready] [data-metric-slide] { grid-area: 1 / 1; width: 100%; }
+        .metrics-data[data-metrics-ready] [data-metric-slide] ${NUMBER} { visibility: hidden; }
+        .metrics-roll { position: absolute; left: 0; right: 0; overflow: clip; pointer-events: none; }
+        .metrics-roll > div { position: relative; }
+        .metrics-roll ${NUMBER} { margin: 0; }
+        .metric-heading-wrap .card-divider.has-progress {
+          overflow: hidden;
+          background-color: color-mix(in srgb, var(--swatch--deep-blue, #153138) 18%, transparent);
+        }
+        .metrics-progress {
+          position: absolute; inset: 0;
+          background-color: var(--swatch--deep-blue, #153138);
+          transform: scaleX(0); transform-origin: left center;
+        }
       `;
       document.head.appendChild(style);
     }
+    slides.forEach((slide) => slide.setAttribute('data-metric-slide', ''));
+
+    const template = slides[0].querySelector(NUMBER);
+    const roll = document.createElement('div');
+    roll.className = 'metrics-roll';
+    roll.setAttribute('aria-hidden', 'true');
+    const track = document.createElement('div');
+    roll.appendChild(track);
+    viewport.appendChild(roll);
+    const makeNumber = (label) => {
+      const copy = template.cloneNode(true);
+      const span = copy.querySelector('span');
+      if (span) span.textContent = label;
+      return copy;
+    };
+    let shown = makeNumber(labels[0]);
+    track.appendChild(shown);
+    // The window sits exactly over the slides' number and is one line tall.
+    const placeRoll = () => {
+      roll.style.top = `${template.offsetTop}px`;
+      roll.style.height = `${template.offsetHeight}px`;
+    };
+    placeRoll();
+    window.addEventListener('resize', placeRoll);
+    if (document.fonts) document.fonts.ready.then(placeRoll);
 
     const numbers = counter.querySelectorAll('.pagination-num');
     const current = numbers[0];
     const total = numbers[2];
     const digits = Math.max(2, String(slides.length).length);
-    const format = (number) => String(number).padStart(digits, '0');
+    const format = (n) => String(n).padStart(digits, '0');
     counter.setAttribute('aria-live', 'polite');
     if (total) total.textContent = format(slides.length);
+    if (current) current.textContent = format(1);
 
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const progressRing = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    progressRing.setAttribute('class', 'metrics-progress-ring');
-    progressRing.setAttribute('viewBox', '0 0 100 100');
-    progressRing.setAttribute('aria-hidden', 'true');
-    progressRing.innerHTML = '<circle cx="50" cy="50" r="48" pathLength="100" />';
-    next.appendChild(progressRing);
-    const progressCircle = progressRing.querySelector('circle');
-    let displayedValue = metrics[0].value;
-    let numberTween = null;
+    let fill = null;
+    if (divider) {
+      divider.classList.add('has-progress');
+      fill = document.createElement('div');
+      fill.className = 'metrics-progress';
+      divider.appendChild(fill);
+    }
 
-    function updateMetric(instance, animate) {
-      const index = instance.realIndex;
-      if (current) current.textContent = format(index + 1);
+    let index = 0;
+    let rollTween = null;
+    gsap.set(slides.slice(1), { autoAlpha: 0 });
 
-      const metric = metrics[index];
-      numberTween?.kill();
-
-      const from = displayedValue;
-      const valueDisplay = number.querySelector('span');
-      if (!valueDisplay || metric.value === null) return;
-      if (!animate || reducedMotion.matches || !window.gsap || from === null) {
-        valueDisplay.textContent = metric.label;
-        displayedValue = metric.value;
+    function rollTo(label, direction) {
+      // A roll still running finishes at once, so quick clicks stay in step.
+      rollTween?.progress(1);
+      if (reducedMotion.matches) {
+        const span = shown.querySelector('span');
+        if (span) span.textContent = label;
         return;
       }
-
-      // The value stays in place and counts while the description slides sideways.
-      const state = { value: from };
-      const render = () => {
-        displayedValue = state.value;
-        valueDisplay.textContent = `${Math.round(state.value)}${metric.suffix}`;
-      };
-      render();
-      numberTween = window.gsap.to(state, {
-        value: metric.value,
-        duration: .7,
-        ease: 'power2.out',
-        onUpdate: render,
+      const incoming = makeNumber(label);
+      Object.assign(incoming.style, { position: 'absolute', left: '0', top: direction > 0 ? '100%' : '-100%' });
+      track.appendChild(incoming);
+      rollTween = gsap.to(track, {
+        yPercent: -100 * direction,
+        duration: ROLL,
+        ease: 'power2.inOut',
         onComplete: () => {
-          displayedValue = metric.value;
-          valueDisplay.textContent = metric.label;
-          numberTween = null;
+          shown.remove();
+          shown = incoming;
+          incoming.style.position = incoming.style.left = incoming.style.top = '';
+          gsap.set(track, { yPercent: 0 });
+          rollTween = null;
         },
       });
     }
 
-    const swiper = new window.Swiper(viewport, {
-      slidesPerView: 1,
-      speed: 650,
-      loop: true,
-      autoplay: reducedMotion.matches ? false : {
-        delay: 3000,
-        disableOnInteraction: false,
-      },
-      on: {
-        init(instance) {
-          updateMetric(instance, false);
-        },
-        realIndexChange(instance) {
-          updateMetric(instance, true);
-        },
-        autoplayTimeLeft(_instance, _timeLeft, percentage) {
-          progressCircle.style.strokeDashoffset = String(Math.max(0, Math.min(1, percentage)) * 100);
-        },
-      },
-    });
-
-    // A manual step starts a fresh three-second countdown on the new metric.
-    const move = (direction) => {
-      swiper[direction]();
-      if (swiper.autoplay?.running) {
-        swiper.autoplay.stop();
-        swiper.autoplay.start();
+    function fadeTo(from, to) {
+      gsap.killTweensOf(slides);
+      slides.forEach((slide) => { if (slide !== from && slide !== to) gsap.set(slide, { autoAlpha: 0 }); });
+      if (reducedMotion.matches) {
+        gsap.set(from, { autoAlpha: 0 });
+        gsap.set(to, { autoAlpha: 1 });
+        return;
       }
-    };
-    [[prev, 'Previous statistic', () => move('slidePrev')],
-      [next, 'Next statistic', () => move('slideNext')]].forEach(([arrow, label, navigate]) => {
+      gsap.to(from, { autoAlpha: 0, duration: 0.12, ease: 'power1.in' });
+      gsap.fromTo(to, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.2, delay: 0.12, ease: 'power1.out' });
+    }
+
+    // The countdown: the line fills over DELAY seconds, then the next statistic comes up.
+    let timer = null;
+    function restartTimer() {
+      timer?.kill();
+      if (!fill) return;
+      gsap.set(fill, { scaleX: 0 });
+      if (reducedMotion.matches) return;
+      timer = gsap.to(fill, { scaleX: 1, duration: DELAY, ease: 'none', onComplete: () => go(1) });
+      if (!visible) timer.pause();
+    }
+
+    function go(direction) {
+      const from = slides[index];
+      index = (index + direction + slides.length) % slides.length;
+      if (current) current.textContent = format(index + 1);
+      rollTo(labels[index], direction);
+      fadeTo(from, slides[index]);
+      restartTimer();
+    }
+
+    // The countdown holds while the block is off screen.
+    let visible = true;
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(([entry]) => {
+        visible = entry.isIntersecting;
+        if (visible) timer?.resume();
+        else timer?.pause();
+      }).observe(root);
+    }
+    restartTimer();
+
+    // A manual step starts a fresh countdown on the new statistic.
+    [[prev, 'Previous statistic', () => go(-1)],
+      [next, 'Next statistic', () => go(1)]].forEach(([arrow, label, navigate]) => {
       arrow.setAttribute('role', 'button');
       arrow.setAttribute('tabindex', '0');
       arrow.setAttribute('aria-label', label);
@@ -183,16 +209,18 @@
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
   // Copies of the cards get the same tap behaviour the card component's own script gives the
-  // originals: a tap opens the details, the close button shuts them, a tap elsewhere closes.
+  // originals: a tap opens the details, the + (turned into the x) or the close button shuts
+  // them, a tap elsewhere closes.
   function wireCopy(card, signal) {
     const toggle = card.querySelector('.spotlight_card_toggle');
     const setOpen = (open) => {
       card.classList.toggle('is-open', open);
       toggle?.setAttribute('aria-expanded', String(open));
+      toggle?.setAttribute('aria-label', open ? 'Hide details' : 'Show details');
     };
     card.addEventListener('click', (event) => {
       if (event.target.closest('a, .spotlight_card_close')) return;
-      setOpen(true);
+      setOpen(!(event.target.closest('.spotlight_card_toggle') && card.classList.contains('is-open')));
     }, { signal });
     card.querySelector('.spotlight_card_close')?.addEventListener('click', (event) => {
       event.stopPropagation();
