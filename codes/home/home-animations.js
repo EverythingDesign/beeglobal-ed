@@ -352,10 +352,51 @@
   const DRAG_THRESHOLD = 5;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
+  // Hovered cards take their brand colour, and the logo turns white over it. The logo files are
+  // dark artwork, some on a white box, so the white version is a copy of each logo (in the same
+  // grid cell, so it sizes exactly as the original), inverted and screened onto the card: the inverted box goes black and drops out, the artwork comes up white.
+  // The original is multiplied, so its own white box vanishes into the colour too. The two
+  // crossfade, with a slight lift in scale, on the site's common curve.
+  function addWhiteLogos(slides) {
+    if (!document.getElementById('portfolio-logo-hover-style')) {
+      const style = document.createElement('style');
+      style.id = 'portfolio-logo-hover-style';
+      style.textContent = `
+        .portfolio-list-item .u-image-wrapper:has(> .portfolio-logo-white) { display: grid; }
+        .portfolio-list-item .u-image-wrapper > img {
+          grid-area: 1 / 1;
+          mix-blend-mode: multiply;
+          transition: opacity .6s cubic-bezier(.32, .72, 0, 1), transform .6s cubic-bezier(.32, .72, 0, 1);
+        }
+        .portfolio-list-item .u-image-wrapper > img.portfolio-logo-white {
+          filter: invert(1); mix-blend-mode: screen; opacity: 0; pointer-events: none;
+        }
+        @media (hover: hover) {
+          .portfolio-list-item:hover .u-image-wrapper > img { opacity: 0; transform: scale(1.05); }
+          .portfolio-list-item:hover .u-image-wrapper > img.portfolio-logo-white { opacity: 1; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .portfolio-list-item .u-image-wrapper > img { transition: none; transform: none !important; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    slides.forEach(slide => {
+      const logo = slide.querySelector('.u-image-wrapper > img:not(.portfolio-logo-white)');
+      if (!logo || logo.parentElement.querySelector('.portfolio-logo-white')) return;
+      const white = logo.cloneNode();
+      white.classList.add('portfolio-logo-white');
+      white.alt = '';
+      white.setAttribute('aria-hidden', 'true');
+      logo.after(white);
+    });
+  }
+
   function setupMarquee(root) {
     const track = root.querySelector('.swiper-wrapper') || root.firstElementChild;
     const originals = track ? [...track.children] : [];
     if (!window.gsap || originals.length < 2) return;
+    addWhiteLogos(originals);
 
     const state = { offset: 0, velocity: 0, setWidth: 0, edges: [], dragging: false, tween: null, tweenTarget: 0 };
     const setX = gsap.quickSetter(track, 'x', 'px');
