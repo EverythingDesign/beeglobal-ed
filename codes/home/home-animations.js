@@ -346,8 +346,10 @@
   const listSelector = '.portfolio-list-wrapper';
   // Cruising speed in px per second; the list drifts left.
   const SPEED = 40;
-  // How quickly a flick or drag release eases back to cruising speed (higher = sooner).
+  // How quickly a flick or drag release eases back to cruising speed (higher = sooner), and how
+  // quickly the list comes to rest under a mouse (sooner, so a card holds still to be hovered).
   const SETTLE = 2.5;
+  const HOLD = 8;
   // Pointer travel (px) after which a press counts as a drag rather than a click.
   const DRAG_THRESHOLD = 5;
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -365,8 +367,9 @@
     function appendCopy() {
       originals.forEach(slide => {
         const clone = slide.cloneNode(true);
+        // Hidden from screen readers, but not inert: the copies only hold a logo, and inert
+        // would stop them taking the hover (brand colour, white logo) that the originals take.
         clone.setAttribute('aria-hidden', 'true');
-        clone.inert = true;
         track.append(clone);
       });
       copies++;
@@ -393,8 +396,8 @@
     function tick(time, deltaTime) {
       if (state.dragging || state.tween) return;
       const dt = Math.min(deltaTime, 64) / 1000;
-      const cruise = reducedMotion.matches ? 0 : -SPEED;
-      state.velocity += (cruise - state.velocity) * (1 - Math.exp(-SETTLE * dt));
+      const cruise = reducedMotion.matches || hovering ? 0 : -SPEED;
+      state.velocity += (cruise - state.velocity) * (1 - Math.exp(-(hovering ? HOLD : SETTLE) * dt));
       state.offset += state.velocity * dt;
       render();
     }
@@ -428,6 +431,12 @@
       const done = () => { state.tween = null; };
       state.tween = gsap.to(state, { offset: state.tweenTarget, duration: .7, ease: 'power3.out', onUpdate: render, onComplete: done, onInterrupt: done });
     }
+
+    // A mouse over the list holds it: it eases to a stop, so a card can be hovered, and drifts
+    // again once the pointer leaves. It can still be dragged or flicked while held.
+    let hovering = false;
+    root.addEventListener('pointerenter', event => { if (event.pointerType === 'mouse') hovering = true; });
+    root.addEventListener('pointerleave', event => { if (event.pointerType === 'mouse') hovering = false; });
 
     // Drag with mouse or touch. touch-action: pan-y keeps vertical page scrolling on touch screens.
     let startX = 0;
