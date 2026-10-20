@@ -1,5 +1,5 @@
 // Portfolio and Team heroes: the "At a glance" statistics. One statistic shows at a time and
-// they cycle every four seconds. The line under the heading fills as the countdown; the number
+// they cycle every four seconds, counted down by a ring drawn around the next arrow. The number
 // rolls up out of view as the next one rolls in from below (down when stepping back), and the
 // caption only fades: out quickly, then the new one in. Needs GSAP, loaded before this file.
 (function () {
@@ -12,7 +12,6 @@
     const gsap = window.gsap;
     const viewport = root.querySelector('.metrics-data');
     const counter = root.querySelector('.swiper-pagination-number');
-    const divider = root.querySelector('.metric-heading-wrap .card-divider');
     const prev = root.querySelector('.metrics-swiper-navigator .is-prev');
     const next = root.querySelector('.metrics-swiper-navigator .is-next');
     if (!gsap || !viewport || viewport.dataset.metricsReady || !counter || !prev || !next) return;
@@ -40,15 +39,9 @@
         .metrics-roll { position: absolute; left: 0; right: 0; overflow: clip; pointer-events: none; }
         .metrics-roll > div { position: relative; }
         .metrics-roll ${NUMBER} { margin: 0; }
-        .metric-heading-wrap .card-divider.has-progress {
-          overflow: hidden;
-          background-color: color-mix(in srgb, var(--swatch--deep-blue, #153138) 18%, transparent);
-        }
-        .metrics-progress {
-          position: absolute; inset: 0;
-          background-color: var(--swatch--deep-blue, #153138);
-          transform: scaleX(0); transform-origin: left center;
-        }
+        .metrics-swiper-navigator .is-next { position: relative; }
+        .metrics-swiper-navigator .metrics-progress-ring { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; transform: rotate(-90deg) scaleY(-1); }
+        .metrics-swiper-navigator .metrics-progress-ring circle { fill: none; stroke: var(--swatch--deep-blue, #153138); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 100; }
       `;
       document.head.appendChild(style);
     }
@@ -88,13 +81,14 @@
     if (current) current.textContent = format(1);
 
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-    let fill = null;
-    if (divider) {
-      divider.classList.add('has-progress');
-      fill = document.createElement('div');
-      fill.className = 'metrics-progress';
-      divider.appendChild(fill);
-    }
+    // The countdown ring: it closes clockwise from the top over DELAY seconds.
+    const ring = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    ring.setAttribute('class', 'metrics-progress-ring');
+    ring.setAttribute('viewBox', '0 0 100 100');
+    ring.setAttribute('aria-hidden', 'true');
+    ring.innerHTML = '<circle cx="50" cy="50" r="48" pathLength="100" />';
+    next.appendChild(ring);
+    const circle = ring.querySelector('circle');
 
     let index = 0;
     let rollTween = null;
@@ -137,14 +131,13 @@
       gsap.fromTo(to, { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.2, delay: 0.12, ease: 'power1.out' });
     }
 
-    // The countdown: the line fills over DELAY seconds, then the next statistic comes up.
+    // The countdown: the ring closes over DELAY seconds, then the next statistic comes up.
     let timer = null;
     function restartTimer() {
       timer?.kill();
-      if (!fill) return;
-      gsap.set(fill, { scaleX: 0 });
+      gsap.set(circle, { strokeDashoffset: 100 });
       if (reducedMotion.matches) return;
-      timer = gsap.to(fill, { scaleX: 1, duration: DELAY, ease: 'none', onComplete: () => go(1) });
+      timer = gsap.to(circle, { strokeDashoffset: 0, duration: DELAY, ease: 'none', onComplete: () => go(1) });
       if (!visible) timer.pause();
     }
 
