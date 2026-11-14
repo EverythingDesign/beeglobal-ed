@@ -4,6 +4,9 @@
   function start() {
     if (!window.Lenis || window.Webflow?.env?.('editor')) return;
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // Touch-only devices already use native scrolling. Avoid Lenis layout
+    // measurements and its animation-frame loop when it cannot help scrolling.
+    if (matchMedia('(hover: none) and (pointer: coarse)').matches) return;
 
     const lenis = new Lenis({ autoRaf: !window.gsap, autoToggle: true });
     window.lenis = lenis;
