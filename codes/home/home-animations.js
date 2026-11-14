@@ -209,7 +209,7 @@
         animation: reveal,
         toggleActions: 'play none none reverse',
       });
-      ScrollTrigger.refresh();
+      window.requestHomeScrollRefresh?.();
     });
   }
 

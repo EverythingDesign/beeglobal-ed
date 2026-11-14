@@ -99,7 +99,7 @@
         reveal(heading, words, { duration: WORD_DURATION, stagger: WORD_STAGGER });
       });
       // Split text can change line heights, so measure trigger positions again.
-      ScrollTrigger.refresh();
+      window.requestHomeScrollRefresh?.();
     });
   }
 

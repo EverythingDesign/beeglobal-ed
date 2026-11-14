@@ -1,0 +1,1 @@
+(()=>{(function(){let e=!1;window.requestHomeScrollRefresh=function(){e||!window.ScrollTrigger||(e=!0,Promise.resolve(window.preloaderHidden).then(()=>{requestAnimationFrame(()=>{e=!1,window.ScrollTrigger&&ScrollTrigger.refresh()})}))}})();})();
